@@ -67,6 +67,8 @@ textarea.f{min-height:110px;resize:vertical;word-break:break-all}
 .warn{font-size:12px;color:var(--mute);margin-top:4px}
 select.f{appearance:auto}
 .vl{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.gcb{border:1px solid var(--line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.gcb .hd{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.gcb .hd b{font-size:13px;margin-right:auto}
 .vi{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--soft)}
 .vi img{width:40px;height:40px;object-fit:cover;border-radius:6px}
 .vi span{flex:1;word-break:break-all}
@@ -167,9 +169,13 @@ dialog[open]{display:block}
   <input class="f" id="gk" type="password" placeholder="只保存在你这台电脑的浏览器里" autocomplete="off">
   <div class="warn">令牌不会上传到任何地方，只会发给 NovelAI 官方接口。不要在别人的电脑上保存。</div>
   <label for="gs">画师串</label><textarea class="f" id="gs" style="min-height:70px"></textarea>
-  <label>人物（可多选，在「人物」页建库）</label><div class="tgs" id="gch"></div>
+  <label>角色栏（每个角色单独一栏，和 NovelAI 官网一样）</label>
+  <div class="warn">从人物库加入（点一下加入，再点移除）：</div><div class="tgs" id="gch"></div>
+  <div class="vl" id="gcl"></div>
+  <div class="ch" style="margin-top:6px"><button class="ib" id="gca" type="button">＋ 添加空白角色</button></div>
+  <label style="font-weight:400"><input type="checkbox" id="gcsep" checked> 角色单独发送，不和主提示词混在一起（推荐；取消后会像以前一样拼进主提示词）</label>
   <label for="gtp">提示词模板（在「提示词」页建库）</label><select class="f" id="gtp"></select>
-  <label for="ge">其他提示词（临时补充）</label><textarea class="f" id="ge" style="min-height:70px" placeholder="1girl, solo, ..."></textarea>
+  <label for="ge">主提示词（场景、构图、人数、动作等）</label><textarea class="f" id="ge" style="min-height:70px" placeholder="1girl, solo, ..."></textarea>
   <div class="warn" id="gpv"></div>
   <label style="font-weight:400"><input type="checkbox" id="gprev" checked> 把生成的图存为所用提示词模板 / 人物的预览图</label>
   <label>Vibe（可选）</label>
@@ -607,16 +613,16 @@ async function saveGen(seed){
   lastBlob=null;save();render();fillGt($("gt").value);renderGv(true);
   toast("已保存到「"+it.name+"」"+(seed!=null?"，种子 "+seed:""))}
 var GF=["ge","gn","gm","gmc","gz","gp","gc","gfmt"];
-function saveGenCfg(){var o={auto:$("gauto").checked,dl:$("gdlauto").checked,gmg:$("gmg").checked,gms:gms};GF.forEach(function(id){o[id]=$(id).value});kvSet("gen",o)}
+function saveGenCfg(){var o={auto:$("gauto").checked,dl:$("gdlauto").checked,gmg:$("gmg").checked,gms:gms,sep:$("gcsep").checked,chars:gChars.map(function(c){return {lib:c.lib,text:c.text,uc:c.uc}})};GF.forEach(function(id){o[id]=$(id).value});kvSet("gen",o)}
 function loadGenCfg(){kvGet("gen").then(function(o){
-  if(!o)return;GF.forEach(function(id){if(o[id]!=null)$(id).value=o[id]});$("gauto").checked=o.auto!==false;$("gdlauto").checked=!!o.dl;if(o.gm)setModel(o.gm);gms=o.gms||[];$("gmg").checked=!!o.gmg;updGmg()})}
+  if(!o)return;$("gcsep").checked=o.sep!==false;setChars(o.chars||[]);GF.forEach(function(id){if(o[id]!=null)$(id).value=o[id]});$("gauto").checked=o.auto!==false;$("gdlauto").checked=!!o.dl;if(o.gm)setModel(o.gm);gms=o.gms||[];$("gmg").checked=!!o.gmg;updGmg()})}
 GF.concat(["gauto","gdlauto","gmg"]).forEach(function(id){$(id).addEventListener("input",saveGenCfg);$(id).addEventListener("change",saveGenCfg)});
 $("gs").addEventListener("input",function(){renderGv()});
 function openGen(it){
   $("gs").value=it?it.str:$("gs").value;
   if(it&&it.neg){$("gn").value=it.neg;saveGenCfg()}
   fillGt(it?it.id:"");
-  renderGv(true);prefillNN();renderGenLib();kvGet("token").then(function(t){if(t&&!$("gk").value)$("gk").value=t});
+  renderGv(true);prefillNN();renderGc();renderGenLib();kvGet("token").then(function(t){if(t&&!$("gk").value)$("gk").value=t});
   showDlg("gd")}
 async function unzipFirst(buf){
   var dv=new DataView(buf),u=new Uint8Array(buf);
@@ -649,8 +655,9 @@ async function generate(){
     n_samples:1,seed:seed,negative_prompt:neg,ucPreset:0,qualityToggle:true,noise_schedule:"karras",autoSmea:false,legacy:false,
     v4_prompt:{caption:{base_caption:prompt,char_captions:[]},use_coords:false,use_order:true},
     v4_negative_prompt:{caption:{base_caption:neg,char_captions:[]},legacy_uc:false}}};
+  applyChars(body);
   var btn=$("gg"),box=$("gres");
-  try{var vb=collectVibes(body.model);lastTmpUsed=vb.tmp;lastMeta={m:body.model,z:$("gz").value,p:body.parameters.steps,c:body.parameters.scale,s:seed,e:ex,n:neg,v:vb.names};
+  try{var vb=collectVibes(body.model);lastTmpUsed=vb.tmp;lastMeta={m:body.model,z:$("gz").value,p:body.parameters.steps,c:body.parameters.scale,s:seed,e:ex,ch:sepOK(body.model)?charList():[],n:neg,v:vb.names};
     if(vb.img.length){var P=body.parameters;P.reference_image_multiple=vb.img;P.reference_strength_multiple=vb.str;P.reference_information_extracted_multiple=vb.ie;P.normalize_reference_strength_multiple=true}
   }catch(e){$("gres").textContent="生成失败："+e.message;$("gres").style.color="var(--acc)";return}
 btn.disabled=true;btn.textContent="生成中…";box.textContent="";box.style.color="";$("gdlrow").hidden=true;$("gsave").hidden=true;
@@ -682,13 +689,13 @@ function showBig(src,it,idx){
   $("bigi").src=src;var c=$("bigc");c.innerHTML="";
   var m=it.metas&&it.metas[idx],t=document.createElement("div");
   if(!m)t.textContent="没有记录生成参数（可能是手动上传，或旧版本保存的图）";
-  else t.textContent=["模型："+m.m,"尺寸："+m.z+"　步数："+m.p+"　引导强度："+m.c+"　种子："+m.s,"其他提示词："+(m.e||"无"),"负面提示词："+(m.n||"无"),(m.v&&m.v.length?"Vibe："+m.v.join("、"):"")].filter(Boolean).join("\n");
+  else t.textContent=["模型："+m.m,"尺寸："+m.z+"　步数："+m.p+"　引导强度："+m.c+"　种子："+m.s,"主提示词："+(m.e||"无"),(m.ch&&m.ch.length?m.ch.map(function(c,i){return "角色 "+(i+1)+"："+c.text+(c.uc?"（负面："+c.uc+"）":"")}).join("\n"):""),"负面提示词："+(m.n||"无"),(m.v&&m.v.length?"Vibe："+m.v.join("、"):"")].filter(Boolean).join("\n");
   c.appendChild(t);
   var b2=document.createElement("button");b2.className="btn";b2.style.cssText="margin:8px 8px 0 0";b2.textContent="下载这张图";
   b2.onclick=function(e){e.stopPropagation();fetch(src).then(function(r){return r.blob()}).then(function(bl){saveAs(bl,"NAI-"+(m?m.s:Date.now()))})};c.appendChild(b2);
   if(m){var b=document.createElement("button");b.className="btn pri";b.style.marginTop="8px";b.textContent="套用这组参数去生图（含种子）";
     b.onclick=function(e){e.stopPropagation();closeDlg("big");closeDlg("dt");
-      gSel=[];$("gtp").value="";$("ge").value=m.e||"";$("gn").value=m.n||"";setModel(m.m);$("gz").value=m.z;$("gp").value=m.p;$("gc").value=m.c;$("gd2").value=m.s;
+      setChars(m.ch||[]);$("gtp").value="";$("ge").value=m.e||"";$("gn").value=m.n||"";setModel(m.m);$("gz").value=m.z;$("gp").value=m.p;$("gc").value=m.c;$("gd2").value=m.s;
       saveGenCfg();$("gres").textContent="";$("gsave").hidden=true;openGen(it)};c.appendChild(b)}
   showDlg("big")}
 $("bigc").onclick=function(e){e.stopPropagation()};
@@ -776,7 +783,7 @@ $("gmg").addEventListener("change",updGmg);updGmg();
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
 async function generateGroup(){
   var tk=$("gk").value.trim();if(!tk){toast("请先填写 API 令牌");return}
-  var art=$("gs").value.trim(),ex=composeExtra(),prompt=[art,ex].filter(Boolean).join(", ");
+  var art=$("gs").value.trim(),ex=composeExtra("nai-diffusion-4-5-full"),prompt=[art,ex].filter(Boolean).join(", ");
   if(!prompt){toast("请先填写提示词");return}
   var ms=MODELS.map(function(x){return x[0]}).filter(function(x){return gms.indexOf(x)>=0});
   if(!ms.length){toast("请先选择至少一个模型");return}
@@ -790,11 +797,11 @@ async function generateGroup(){
     var model=ms[i];btn.textContent="生成中 "+(i+1)+"/"+ms.length+"…";
     var cell=document.createElement("div"),cap=document.createElement("div");cap.className="warn";cap.textContent=mLabel(model)+" 生成中…";cell.appendChild(cap);grid.appendChild(cell);
     try{
-      var body=mkBody(prompt,seed,model),P=body.parameters,vb={img:[],names:[],tmp:[]},note="";
+      var body=mkBody(prompt,seed,model),P=(applyChars(body),body.parameters),vb={img:[],names:[],tmp:[]},note="";
       try{vb=collectVibes(model);if(vb.img.length){P.reference_image_multiple=vb.img;P.reference_strength_multiple=vb.str;P.reference_information_extracted_multiple=vb.ie;P.normalize_reference_strength_multiple=true}}
       catch(e){vb={img:[],names:[],tmp:[]};note="（没有适用的 Vibe，已不使用）"}
       var blob=await naiRequest(tk,body);await libPreview(blob);
-      var meta={m:model,z:$("gz").value,p:P.steps,c:P.scale,s:seed,e:ex,n:neg,v:vb.names},tmpU=vb.tmp||[];
+      var meta={m:model,z:$("gz").value,p:P.steps,c:P.scale,s:seed,e:ex,ch:sepOK(model)?charList():[],n:neg,v:vb.names},tmpU=vb.tmp||[];
       var im=document.createElement("img");im.src=URL.createObjectURL(blob);im.alt=mLabel(model);im.style.cursor="default";cell.insertBefore(im,cap);
       cap.textContent=mLabel(model)+note;
       var rw=document.createElement("div");rw.style.cssText="display:flex;gap:6px;margin-top:4px";cell.appendChild(rw);
@@ -1030,20 +1037,58 @@ function renderLib(kind){
     var r=document.createElement("div");r.className="ch";
     function mk(txt,fn){var b=document.createElement("button");b.className="ib";b.textContent=txt;b.onclick=fn;r.appendChild(b);return b}
     mk("复制",function(){copy(x.text)});mk("编辑",function(){openLib(kind,x.id)});
-    mk("用它生图",function(){gSel=kind==="chars"?[x.id]:gSel;if(kind==="negs"){$("gn").value=x.text;saveGenCfg()}openGen(null);if(kind==="prompts"){$("gtp").value=x.id;renderGenLib()}});
+    mk("用它生图",function(){if(kind==="chars")setChars([{lib:x.id,text:x.text}]);if(kind==="negs"){$("gn").value=x.text;saveGenCfg()}openGen(null);if(kind==="prompts"){$("gtp").value=x.id;renderGenLib()}});
     var d=mk("删除",function(){if(d.dataset.ok){lib[kind]=lib[kind].filter(function(y){return y.id!==x.id});saveLib();render();renderGenLib()}else{d.dataset.ok=1;d.textContent="再点确认";setTimeout(function(){d.dataset.ok="";d.textContent="删除"},3000)}});
     c.appendChild(r);box.appendChild(c)})}
-function composeExtra(){
-  var p=gSel.map(function(id){return (lib.chars.filter(function(x){return x.id===id})[0]||{}).text}).filter(Boolean);
+/* ---- 角色栏：每个角色单独发送（V4 及以后的模型支持） ---- */
+var gChars=[];
+function sepOK(m){m=m||getModel();return $("gcsep").checked&&!/nai-diffusion-(2|3)|furry/.test(m)}
+function charList(){return gChars.map(function(c){return {text:(c.text||"").trim(),uc:(c.uc||"").trim(),lib:c.lib||""}}).filter(function(c){return c.text})}
+function setChars(a){gChars=(a||[]).slice(0,6).map(function(c){return {lib:c.lib||"",text:c.text||"",uc:c.uc||"",open:!!c.uc}});renderGc()}
+function applyChars(body){
+  var cs=charList();if(!cs.length||!sepOK(body.model))return;
+  var P=body.parameters;
+  P.v4_prompt.caption.char_captions=cs.map(function(c){return {char_caption:c.text,centers:[{x:.5,y:.5}]}});
+  P.v4_negative_prompt.caption.char_captions=cs.map(function(c){return {char_caption:c.uc,centers:[{x:.5,y:.5}]}});
+  P.characterPrompts=cs.map(function(c){return {prompt:c.text,uc:c.uc,center:{x:.5,y:.5},enabled:true}});
+  P.use_coords=false}
+function updGpv(){
+  var n=charList().length,sep=sepOK();
+  $("gpv").textContent="主提示词附加："+(composeExtra()||"（空）")+(n?(sep?"　｜　单独发送的角色："+n+" 个":($("gcsep").checked?"　｜　当前模型不支持角色栏，角色已拼进主提示词":"")):"")}
+function renderGc(){
+  gSel=gChars.filter(function(c){return c.lib}).map(function(c){return c.lib});
+  var h=$("gcl");h.innerHTML="";
+  gChars.forEach(function(c,i){
+    var w=document.createElement("div");w.className="gcb";
+    var hd=document.createElement("div");hd.className="hd";w.appendChild(hd);
+    var lb=lib.chars.filter(function(x){return x.id===c.lib})[0];
+    var nm=document.createElement("b");nm.textContent="角色 "+(i+1)+(lb?"："+lb.name:"");hd.appendChild(nm);
+    var ta=document.createElement("textarea");ta.className="f";ta.style.minHeight="60px";ta.placeholder="这个角色的长相和穿着，例如 girl, long wavy hair, brown eyes ...";ta.value=c.text;
+    ta.addEventListener("input",function(){c.text=ta.value;saveGenCfg();updGpv()});
+    var tu=document.createElement("textarea");tu.className="f";tu.style.minHeight="44px";tu.placeholder="只对这个角色生效的负面词（可不填）";tu.value=c.uc;tu.hidden=!c.open;
+    tu.addEventListener("input",function(){c.uc=tu.value;saveGenCfg()});
+    var bu=document.createElement("button");bu.type="button";bu.className="ib";bu.textContent="角色负面词";
+    bu.onclick=function(){c.open=!c.open;tu.hidden=!c.open;if(c.open)tu.focus()};hd.appendChild(bu);
+    var bd=document.createElement("button");bd.type="button";bd.className="ib";bd.textContent="移除";
+    bd.onclick=function(){gChars.splice(i,1);saveGenCfg();renderGc();renderGenLib()};hd.appendChild(bd);
+    w.appendChild(ta);w.appendChild(tu);h.appendChild(w)});
+  $("gca").hidden=gChars.length>=6;updGpv()}
+$("gca").onclick=function(){if(gChars.length>=6)return;gChars.push({lib:"",text:"",uc:"",open:false});saveGenCfg();renderGc();var t=$("gcl").querySelectorAll("textarea");if(t.length)t[t.length-2].focus()};
+$("gcsep").addEventListener("change",function(){saveGenCfg();updGpv()});
+$("gm").addEventListener("change",updGpv);
+function composeExtra(m){
+  var p=sepOK(m)?[]:charList().map(function(c){return c.text});
   var t=lib.prompts.filter(function(x){return x.id===$("gtp").value})[0];if(t)p.push(t.text);
   var e=$("ge").value.trim();if(e)p.push(e);return p.join(", ")}
 function renderGenLib(){
   var h=$("gch");h.innerHTML="";if(!lib.chars.length)h.textContent="（还没有人物）";
   lib.chars.forEach(function(x){var b=document.createElement("button");b.className="chip"+(gSel.indexOf(x.id)>=0?" on":"");b.textContent=x.name;
-    b.onclick=function(){var i=gSel.indexOf(x.id);if(i>=0)gSel.splice(i,1);else gSel.push(x.id);renderGenLib()};h.appendChild(b)});
+    b.onclick=function(){var k=-1;gChars.forEach(function(c,j){if(c.lib===x.id)k=j});
+      if(k>=0)gChars.splice(k,1);else{if(gChars.length>=6){toast("最多 6 个角色");return}gChars.push({lib:x.id,text:x.text,uc:"",open:false})}
+      saveGenCfg();renderGc();renderGenLib()};h.appendChild(b)});
   var sl=$("gtp"),v=sl.value;sl.innerHTML="";var o=document.createElement("option");o.value="";o.textContent="不使用";sl.appendChild(o);
   lib.prompts.forEach(function(x){var e=document.createElement("option");e.value=x.id;e.textContent=x.name;sl.appendChild(e)});
-  sl.value=v;$("gpv").textContent="最终附加："+(composeExtra()||"（空）");renderGenVibeLib();renderGenNeg()}
+  sl.value=v;updGpv();renderGenVibeLib();renderGenNeg()}
 function renderGenNeg(){
   var h=$("gnl");h.innerHTML="";if(!lib.negs.length){h.textContent="（负面词库还是空的，在「负面词」页新建，或点下面「把当前负面词存入库」）";return}
   var cur=norm($("gn").value);
