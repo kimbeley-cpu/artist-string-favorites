@@ -110,6 +110,7 @@ main{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:
 .pane h3{margin:0 0 10px;font-size:15px}
 .lt{white-space:pre-wrap;word-break:break-all;font-size:13px;color:var(--mute);margin:0}
 dialog[open]{display:block}
+.pv{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.pv .sl{border-style:solid;cursor:zoom-in}
 .ib{white-space:nowrap}.ar{flex-wrap:wrap}.ar .n{min-width:90px}.ch{flex-wrap:wrap}.ch .cn{min-width:120px}
 .acts{display:flex;gap:6px;flex:1 1 100%;justify-content:flex-end}
 #vv.lg{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
@@ -170,6 +171,7 @@ dialog[open]{display:block}
   <label for="gtp">提示词模板（在「提示词」页建库）</label><select class="f" id="gtp"></select>
   <label for="ge">其他提示词（临时补充）</label><textarea class="f" id="ge" style="min-height:70px" placeholder="1girl, solo, ..."></textarea>
   <div class="warn" id="gpv"></div>
+  <label style="font-weight:400"><input type="checkbox" id="gprev" checked> 把生成的图存为所用提示词模板 / 人物的预览图</label>
   <label>Vibe（可选）</label>
   <div class="warn">从 Vibe 库选择（点一下加入下方列表）：</div><div class="tgs" id="gvl"></div>
   <div class="drop" id="gvd" tabindex="0">点击添加 .naiv4vibe 文件，勾选的会用于本次生图</div>
@@ -231,6 +233,11 @@ dialog[open]{display:block}
   <label for="ln">名称</label><input class="f" id="ln">
   <label for="lx" id="llx"></label><textarea class="f" id="lx" style="min-height:120px"></textarea>
   <label for="lm">备注（可选）</label><input class="f" id="lm">
+  <div id="lib_imgs"><label>参考图（可选）</label>
+  <div class="drop" id="ldrop" tabindex="0">点击选择图片，或把图片拖进来 / 直接粘贴（Ctrl+V）</div>
+  <input type="file" id="lfi" accept="image/*" multiple hidden>
+  <div class="thumbs" id="lthumbs"></div>
+  <div class="warn">用这条生图时，生成的图也会自动加到这里（最多保留 8 张，旧的会被挤掉）。</div></div>
   <div class="row"><button class="btn" id="lc">取消</button><button class="btn pri" id="ls">保存</button></div>
 </div></dialog>
 <dialog id="vm"><div class="in">
@@ -622,11 +629,11 @@ async function unzipFirst(buf){
   if(method===0)return new Blob([data],{type:"image/png"});
   var out=await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer();
   return new Blob([out],{type:"image/png"})}
-function toJpeg(blob){return new Promise(function(res){
+function toJpeg(blob,max,q){max=max||1000;q=q||.88;return new Promise(function(res){
   var url=URL.createObjectURL(blob),img=new Image();
-  img.onload=function(){var r=Math.min(1,1000/Math.max(img.width,img.height)),c=document.createElement("canvas");
+  img.onload=function(){var r=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement("canvas");
     c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);c.getContext("2d").drawImage(img,0,0,c.width,c.height);
-    URL.revokeObjectURL(url);res(c.toDataURL("image/jpeg",.88))};img.src=url})}
+    URL.revokeObjectURL(url);res(c.toDataURL("image/jpeg",q))};img.src=url})}
 async function generate(){
   var tk=$("gk").value.trim();
   if(!tk){toast("请先填写 API 令牌");return}
@@ -652,7 +659,7 @@ btn.disabled=true;btn.textContent="生成中…";box.textContent="";box.style.co
     if(!r.ok){var t="";try{t=(await r.text()).slice(0,200)}catch(e){}
       var m={401:"令牌无效或已过期",402:"Anlas 不足或订阅不可用",429:"请求太频繁，稍后再试"}[r.status]||"请求被拒绝";
       throw new Error(m+"（"+r.status+"）"+(t?" "+t:""))}
-    lastBlob=await unzipFirst(await r.arrayBuffer());dlBlob=lastBlob;$("gdlrow").hidden=false;if($("gdlauto").checked)doDownload();
+    lastBlob=await unzipFirst(await r.arrayBuffer());dlBlob=lastBlob;await libPreview(lastBlob);$("gdlrow").hidden=false;if($("gdlauto").checked)doDownload();
     var im=document.createElement("img");im.src=URL.createObjectURL(lastBlob);im.alt="生成结果";box.appendChild(im);
     if($("gauto").checked){await saveGen(seed)}else{$("gsave").hidden=false;toast("生成完成，种子 "+seed)}
   }catch(e){
@@ -786,7 +793,7 @@ async function generateGroup(){
       var body=mkBody(prompt,seed,model),P=body.parameters,vb={img:[],names:[],tmp:[]},note="";
       try{vb=collectVibes(model);if(vb.img.length){P.reference_image_multiple=vb.img;P.reference_strength_multiple=vb.str;P.reference_information_extracted_multiple=vb.ie;P.normalize_reference_strength_multiple=true}}
       catch(e){vb={img:[],names:[],tmp:[]};note="（没有适用的 Vibe，已不使用）"}
-      var blob=await naiRequest(tk,body);
+      var blob=await naiRequest(tk,body);await libPreview(blob);
       var meta={m:model,z:$("gz").value,p:P.steps,c:P.scale,s:seed,e:ex,n:neg,v:vb.names},tmpU=vb.tmp||[];
       var im=document.createElement("img");im.src=URL.createObjectURL(blob);im.alt=mLabel(model);im.style.cursor="default";cell.insertBefore(im,cap);
       cap.textContent=mLabel(model)+note;
@@ -978,14 +985,35 @@ function openLib(kind,id){
   lk=kind;lid=id;var x=id?lib[kind].filter(function(y){return y.id===id})[0]:null,c=kind==="chars";
   $("lt").textContent=(x?"编辑":"新建")+KN[kind];
   $("llx").textContent=c?"外貌特征（如 1boy, long black hair, golden eyes, scar on cheek）":kind==="negs"?"负面词内容（如 lowres, bad anatomy, bad hands）":"提示词内容";
-  $("ln").value=x?x.name:"";$("lx").value=x?x.text:"";$("lm").value=x?(x.note||""):"";showDlg("ld")}
+  $("ln").value=x?x.name:"";$("lx").value=x?x.text:"";$("lm").value=x?(x.note||""):"";draftL=x?(x.imgs||[]).slice():[];$("lib_imgs").hidden=kind==="negs";drawL();showDlg("ld")}
 $("lc").onclick=function(){closeDlg("ld")};
 $("ls").onclick=function(){
   var nm=$("ln").value.trim(),tx=$("lx").value.trim();
   if(!nm||!tx){toast("名称和内容都要填");return}
   var x=lid?lib[lk].filter(function(y){return y.id===lid})[0]:null;
-  if(x){x.name=nm;x.text=tx;x.note=$("lm").value.trim()}else lib[lk].unshift({id:uid(),name:nm,text:tx,note:$("lm").value.trim()});
+  if(x){x.name=nm;x.text=tx;x.note=$("lm").value.trim();x.imgs=draftL.slice()}else lib[lk].unshift({id:uid(),name:nm,text:tx,note:$("lm").value.trim(),imgs:draftL.slice()});
   saveLib();closeDlg("ld");render();renderGenLib();toast("已保存")};
+var draftL=[],LMAX=8;
+function drawL(){
+  var t=$("lthumbs");t.innerHTML="";
+  draftL.forEach(function(src,i){var d=document.createElement("div");d.className="th";var im=document.createElement("img");im.src=src;im.alt="";
+    var x=document.createElement("button");x.textContent="×";x.setAttribute("aria-label","移除这张图");x.onclick=function(){draftL.splice(i,1);drawL()};d.appendChild(im);d.appendChild(x);t.appendChild(d)})}
+function lAdd(files){Array.prototype.forEach.call(files,function(f){if(!f||!/^image\//.test(f.type))return;toJpeg(f,640,.82).then(function(d){draftL.push(d);drawL()})})}
+$("ldrop").onclick=function(){$("lfi").click()};
+$("lfi").onchange=function(){lAdd(this.files);this.value=""};
+$("ldrop").ondragover=function(e){e.preventDefault();this.classList.add("over")};
+$("ldrop").ondragleave=function(){this.classList.remove("over")};
+$("ldrop").ondrop=function(e){e.preventDefault();this.classList.remove("over");lAdd(e.dataTransfer.files)};
+$("ld").addEventListener("paste",function(e){
+  if(lk==="negs")return;var fs=[];Array.prototype.forEach.call((e.clipboardData&&e.clipboardData.items)||[],function(i){if(i.kind==="file")fs.push(i.getAsFile())});
+  if(fs.length){e.preventDefault();lAdd(fs)}});
+async function libPreview(blob){
+  if(!$("gprev").checked)return;
+  var t=lib.prompts.filter(function(x){return x.id===$("gtp").value}),c=lib.chars.filter(function(x){return gSel.indexOf(x.id)>=0}),all=t.concat(c);
+  if(!all.length)return;
+  var d=await toJpeg(blob,640,.82);
+  all.forEach(function(x){x.imgs=(x.imgs||[]).concat([d]);while(x.imgs.length>LMAX)x.imgs.shift()});
+  saveLib();if(view==="prompts"||view==="chars")render()}
 function renderLib(kind){
   var box=$(KB[kind]),q=$("q").value.trim().toLowerCase();box.innerHTML="";
   var list=lib[kind].filter(function(x){return !q||(x.name+x.text+(x.note||"")).toLowerCase().indexOf(q)>=0});
@@ -995,6 +1023,10 @@ function renderLib(kind){
     var h=document.createElement("div");h.className="ch";var n=document.createElement("b");n.className="cn";n.textContent=x.name;h.appendChild(n);c.appendChild(h);
     var t=document.createElement("p");t.className="lt";t.textContent=x.text;c.appendChild(t);
     if(x.note){var m=document.createElement("p");m.className="lt";m.textContent="备注："+x.note;c.appendChild(m)}
+    if(x.imgs&&x.imgs.length){var pv=document.createElement("div");pv.className="pv";
+      x.imgs.slice(-4).reverse().forEach(function(src,i){var sl=document.createElement("div");sl.className="sl";var im=document.createElement("img");im.src=src;im.alt="参考图";im.loading="lazy";sl.appendChild(im);
+        if(i===3&&x.imgs.length>4){var mo=document.createElement("span");mo.className="more";mo.textContent="+"+(x.imgs.length-4);sl.appendChild(mo)}
+        sl.onclick=function(){showBig(src,{},0)};pv.appendChild(sl)});c.appendChild(pv)}
     var r=document.createElement("div");r.className="ch";
     function mk(txt,fn){var b=document.createElement("button");b.className="ib";b.textContent=txt;b.onclick=fn;r.appendChild(b);return b}
     mk("复制",function(){copy(x.text)});mk("编辑",function(){openLib(kind,x.id)});
