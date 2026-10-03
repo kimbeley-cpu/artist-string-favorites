@@ -174,6 +174,7 @@ dialog[open]{display:block}
   <div class="warn">从 Vibe 库选择（点一下加入下方列表）：</div><div class="tgs" id="gvl"></div>
   <div class="drop" id="gvd" tabindex="0">点击添加 .naiv4vibe 文件，勾选的会用于本次生图</div>
   <input type="file" id="gvf" accept=".naiv4vibe,.naiv4vibebundle,.json" multiple hidden>
+  <div class="ch" style="margin-top:6px"><button class="ib" id="gvm" type="button">＋ 用自己的图片制作 Vibe</button></div>
   <div class="vl" id="gv"></div>
   <label style="font-weight:400"><input type="checkbox" id="gkeep" checked> 把勾选使用的 Vibe 一起存进这张卡片</label>
   <label for="gn">负面提示词</label>
@@ -876,6 +877,7 @@ function drawVm(){
   if(!vmBusy)$("vmw").textContent=n?"共 "+vmImgs.length+" 张图 × "+vmMs.length+" 个模型 = "+n+" 次编码，大约消耗 "+n*2+" Anlas。"+(vmImgs.length>1?"会做成一个 Vibe 组。":""):"先选图片和模型。"}
 $("vmk").onclick=function(){drawVm();showDlg("vm")};
 $("vmx").onclick=function(){closeDlg("vm")};
+$("gvm").onclick=function(){drawVm();showDlg("vm")};
 $("vmd").onclick=function(){$("vmf").click()};
 $("vmf").onchange=function(){vmAdd(this.files);this.value=""};
 $("vmd").ondragover=function(e){e.preventDefault();this.classList.add("over")};
