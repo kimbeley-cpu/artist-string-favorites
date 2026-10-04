@@ -135,11 +135,12 @@ dialog[open]{display:block}
     <a class="btn" href="https://spell.novelai.dev/" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit">解析图片</a>
     <button class="btn" id="exp">导出备份</button>
     <button class="btn" id="imp">导入备份</button>
+    <button class="btn" id="cld">云同步</button>
     <input type="file" id="impf" accept=".json" hidden>
   </div>
   <div id="tabs" class="bar" style="margin-top:10px"><button class="btn tab on" data-v="gallery">画师串</button><button class="btn tab" data-v="roster">画师名单</button><button class="btn tab" data-v="prompts">提示词</button><button class="btn tab" data-v="negs">负面词</button><button class="btn tab" data-v="chars">人物</button><button class="btn tab" data-v="vibes">Vibe</button></div>
   <div id="tags" data-for="gallery"></div>
-</header><div style="max-width:1200px;margin:0 auto;padding:8px 20px 0;color:var(--mute);font-size:12px">网页模式：数据只保存在当前设备的 Chrome 浏览器里，不与其他设备同步；生图直接连接 NovelAI。</div>
+</header><div style="max-width:1200px;margin:0 auto;padding:8px 20px 0;color:var(--mute);font-size:12px">网页模式：数据只保存在当前设备的 Chrome 浏览器里，登录「云同步」后可与其他设备共用；生图直接连接 NovelAI。</div>
 <main id="grid"></main>
 <section class="pane" id="vr" hidden></section><section class="pane lg" id="vp" hidden></section><section class="pane lg" id="vn" hidden></section><section class="pane lg" id="vc" hidden></section><section class="pane lg" id="vv" hidden></section>
 <input type="file" id="lvf" accept=".naiv4vibe,.naiv4vibebundle,.json" multiple hidden>
@@ -288,6 +289,28 @@ dialog[open]{display:block}
   <div class="warn" id="cw"></div>
   <div class="row"><button class="btn" id="cb">返回</button><button class="btn" id="cc">复制</button><button class="btn" id="cs2">存为新卡片</button><button class="btn pri" id="cg">用它生图</button></div>
 </div></dialog>
+<dialog id="cdg"><div class="in">
+  <h2>云同步</h2>
+  <div class="warn">登录同一个账号后，这台设备和其他设备（电脑、手机）会共用同一份数据。NovelAI 令牌不会上传。第一次登录前，建议先点一次「导出备份」。</div>
+  <details id="clcfg" style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">Supabase 项目设置</summary>
+    <label for="clu">Project URL</label><input class="f" id="clu" placeholder="https://xxxx.supabase.co" autocomplete="off">
+    <label for="clk">anon / publishable key</label><input class="f" id="clk" placeholder="eyJ... 或 sb_publishable_..." autocomplete="off">
+    <div class="warn">只填 anon / publishable key。不要填 service_role key 或数据库密码。</div>
+  </details>
+  <div id="clin">
+    <label for="cle">邮箱</label><input class="f" id="cle" type="email" autocomplete="username">
+    <label for="clp">密码（至少 6 位）</label><input class="f" id="clp" type="password" autocomplete="current-password">
+    <div class="row"><button class="btn" id="clsu">注册新账号</button><button class="btn pri" id="clli">登录</button></div>
+  </div>
+  <div id="clon" hidden>
+    <div class="str" id="clinfo" style="margin-top:10px"></div>
+    <div id="clhold" hidden><div class="warn" id="clholdt" style="color:var(--acc)"></div>
+      <div class="row"><button class="btn" id="clhr">从云端恢复</button><button class="btn danger" id="clhd">确认从云端删除</button></div></div>
+    <div class="row"><button class="btn" id="clout">退出登录</button><button class="btn pri" id="clnow">立即同步</button></div>
+  </div>
+  <div class="warn" id="clmsg" style="color:var(--acc)"></div>
+  <div class="row"><button class="btn" id="clx">关闭</button></div>
+</div></dialog>
 <div id="toast" role="status"></div>
 
 <script>
@@ -328,7 +351,7 @@ function localSet(k,v){
 function kvSet(k,v){localSet(k,v)}
 function kvGet(k){return localGet(k)}
 function load(){return kvGet("items").then(function(v){return v||[]})}
-function save(){kvSet("items",items)}
+function save(){kvSet("items",items);clTouch()}
 
 function showDlg(id){var d=$(id);try{if(d.showModal){d.showModal();return}}catch(e){}d.setAttribute("open","");d.style.display="block"}
 function closeDlg(id){var d=$(id);try{if(d.close){d.close();return}}catch(e){}d.removeAttribute("open");d.style.display="none"}
@@ -976,7 +999,7 @@ function exportVibes(arr,grp){
   setTimeout(function(){URL.revokeObjectURL(a.href)},3000);toast("已导出")}
 
 /* ---- 视图 / 资料库 ---- */
-function saveLib(){kvSet("lib",lib)}
+function saveLib(){kvSet("lib",lib);clTouch()}
 function setView(v){
   if(selMode&&v!=="gallery")setMode(false);
   view=v;var P={gallery:"grid",roster:"vr",prompts:"vp",negs:"vn",chars:"vc",vibes:"vv"};
@@ -1201,7 +1224,152 @@ async function refGen(it,btn){
     catch(e){toast("第 "+(i+1)+" 张失败："+(e instanceof TypeError?"请求没发出去：请确认你是在 Chrome 的 HTTPS 网页地址中打开，并检查网络或浏览器是否拦截了 NovelAI 请求":e.message));break}}
   render();openDetail(it.id);if(n)toast("已添加 "+n+" 张参考图")}
 
-openDB().then(load).then(function(d){items=d;loadGenCfg();return kvGet("lib")}).then(function(l){if(l){lib=l;lib.prompts=lib.prompts||[];lib.chars=lib.chars||[];lib.marked=lib.marked||[];lib.vibes=lib.vibes||[];lib.negs=lib.negs||[]}setView("gallery");renderGenLib()});
+/* ---- 云同步（Supabase）：按「每条记录」同步，后改的为准 ---- */
+var CLOUD_URL="",CLOUD_KEY="";
+var cl={cfg:null,ses:null,st:{who:"",cur:"",sh:{}},busy:false,again:false,timer:null,hold:null,okDel:false,last:0,err:""};
+function clWho(){return cl.cfg&&cl.ses?cl.cfg.url+"|"+cl.ses.email:""}
+function clAll(){
+  var m={};
+  function put(kind,arr){arr.forEach(function(x){if(!x.id)x.id=uid();m[kind+":"+x.id]=x})}
+  put("item",items);put("prompt",lib.prompts);put("neg",lib.negs);put("char",lib.chars);put("vibe",lib.vibes);
+  m["meta:marked"]={id:"marked",list:lib.marked};return m}
+function clFp(v){
+  var h=2166136261;
+  function eat(s){for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)>>>0}}
+  (function w(x){
+    if(x===null||x===undefined){eat("n");return}
+    if(typeof x==="string"){if(x.length>300)eat("S"+x.length+x.slice(0,40)+x.slice(-40));else eat("s"+x.length+":"+x);return}
+    if(typeof x!=="object"){eat(typeof x+String(x));return}
+    if(Array.isArray(x)){eat("[");x.forEach(w);eat("]");return}
+    eat("{");Object.keys(x).sort().forEach(function(k){if(x[k]===undefined)return;eat(k+"=");w(x[k])});eat("}")})(v);
+  return h.toString(36)}
+function clScan(){
+  var m=clAll(),sh=cl.st.sh,now=Date.now(),k;
+  for(k in m){var f=clFp(m[k]),s=sh[k];
+    if(!s)sh[k]={f:f,d:1,m:0};
+    else if(s.f!==f||s.del){s.f=f;s.d=1;s.m=s.t?now:0;delete s.del}}
+  for(k in sh){if(!m[k]&&!sh[k].del){if(sh[k].t){sh[k].del=1;sh[k].d=1;sh[k].m=now}else delete sh[k]}}
+  return m}
+async function clErr(r){var t="";try{var j=await r.json();t=j.msg||j.message||j.error_description||j.error||""}catch(e){}
+  return new Error((t||"请求失败")+"（"+r.status+"）")}
+function clSetSes(j,email){
+  cl.ses={access_token:j.access_token,refresh_token:j.refresh_token,exp:Date.now()+(j.expires_in||3600)*1000,email:(j.user&&j.user.email)||email||(cl.ses&&cl.ses.email)||""};
+  localSet("cloudSes",cl.ses)}
+async function clAuth(kind,email,pw){
+  var r=await fetch(cl.cfg.url+"/auth/v1/"+(kind==="signup"?"signup":"token?grant_type=password"),{method:"POST",headers:{apikey:cl.cfg.key,"Content-Type":"application/json"},body:JSON.stringify({email:email,password:pw})});
+  if(!r.ok)throw await clErr(r);var j=await r.json();
+  if(!j.access_token)return false;clSetSes(j,email);return true}
+async function clRefresh(force){
+  if(!cl.ses)return;if(!force&&cl.ses.exp-Date.now()>120000)return;
+  var r=await fetch(cl.cfg.url+"/auth/v1/token?grant_type=refresh_token",{method:"POST",headers:{apikey:cl.cfg.key,"Content-Type":"application/json"},body:JSON.stringify({refresh_token:cl.ses.refresh_token})});
+  if(!r.ok){if(r.status===400||r.status===401||r.status===403){cl.ses=null;localSet("cloudSes",null);throw new Error("登录已过期，请重新登录")}throw await clErr(r)}
+  clSetSes(await r.json())}
+async function clFetch(path,opt,retried){
+  opt=opt||{};var h={apikey:cl.cfg.key,Authorization:"Bearer "+cl.ses.access_token};
+  if(opt.body)h["Content-Type"]="application/json";if(opt.prefer)h.Prefer=opt.prefer;
+  var r=await fetch(cl.cfg.url+path,{method:opt.method||"GET",headers:h,body:opt.body,cache:"no-store"});
+  if(r.status===401&&!retried){await clRefresh(true);return clFetch(path,opt,true)}
+  return r}
+function clApply(upd,rm){
+  if(upd["meta:marked"]){lib.marked=upd["meta:marked"].list||[];delete upd["meta:marked"]}
+  function fix(arr,kind){
+    var out=arr.filter(function(x){return !rm[kind+":"+x.id]}).map(function(x){var k=kind+":"+x.id;if(upd[k]){var v=upd[k];delete upd[k];return v}return x});
+    Object.keys(upd).forEach(function(k){if(k.indexOf(kind+":")===0){out.unshift(upd[k]);delete upd[k]}});return out}
+  items=fix(items,"item");lib.prompts=fix(lib.prompts,"prompt");lib.negs=fix(lib.negs,"neg");lib.chars=fix(lib.chars,"char");lib.vibes=fix(lib.vibes,"vibe");
+  kvSet("items",items);kvSet("lib",lib);render();renderGenLib()}
+async function clSync(){
+  if(!cl.cfg||!cl.ses)return;
+  if(typeof blocked!=="undefined"&&blocked)return;
+  if(cl.busy){cl.again=true;return}
+  cl.busy=true;cl.err="";clShow();
+  var sh,fail=0,failMsg="";
+  try{
+    await clRefresh();
+    if(cl.st.who!==clWho())cl.st={who:clWho(),cur:"",sh:{}};
+    sh=cl.st.sh;var local=clScan();
+    /* 1. 先看云端有哪些变化（只拿目录，不拿内容） */
+    var metas=[],off=0;
+    for(;;){
+      var r=await clFetch("/rest/v1/asf_records?select=kind,id,deleted,updated_at"+(cl.st.cur?"&updated_at=gt."+encodeURIComponent(cl.st.cur):"")+"&order=updated_at.asc,kind.asc,id.asc&limit=1000&offset="+off);
+      if(!r.ok)throw await clErr(r);var a=await r.json();metas=metas.concat(a);if(a.length<1000)break;off+=1000}
+    var need={},rm={},upd={},maxT=cl.st.cur,changed=false;
+    metas.forEach(function(x){
+      var k=x.kind+":"+x.id,s=sh[k];if(x.updated_at>maxT)maxT=x.updated_at;
+      if(s&&s.t===x.updated_at)return;
+      if(s&&s.d&&s.m>Date.parse(x.updated_at))return;
+      if(x.deleted){if(local[k]){rm[k]=1;changed=true}delete sh[k];return}
+      (need[x.kind]=need[x.kind]||[]).push(x.id)});
+    /* 2. 只下载真正需要的内容 */
+    for(var kind in need){var ids=need[kind];
+      for(var i=0;i<ids.length;i+=8){
+        var q=ids.slice(i,i+8).map(function(z){return '"'+z+'"'}).join(",");
+        var r2=await clFetch("/rest/v1/asf_records?select=kind,id,data,updated_at&deleted=is.false&kind=eq."+kind+"&id=in.("+encodeURIComponent(q)+")");
+        if(!r2.ok)throw await clErr(r2);
+        (await r2.json()).forEach(function(x){if(!x.data)return;var k=x.kind+":"+x.id;upd[k]=x.data;sh[k]={f:clFp(x.data),t:x.updated_at};changed=true})}}
+    if(changed)clApply(upd,rm);
+    /* 3. 把本机的改动传上去 */
+    var dirty=Object.keys(sh).filter(function(k){return sh[k].d});
+    var dels=dirty.filter(function(k){return sh[k].del}),known=Object.keys(sh).filter(function(k){return sh[k].t}).length;
+    if(dels.length>5&&dels.length>known*0.5&&!cl.okDel){cl.hold=dels;dirty=dirty.filter(function(k){return !sh[k].del})}else cl.hold=null;
+    cl.okDel=false;
+    var now=clAll(),parts=[],size=0;
+    async function flush(){
+      if(!parts.length)return;var body="["+parts.join(",")+"]";parts=[];size=0;
+      var r3=await clFetch("/rest/v1/asf_records?on_conflict=user_id,kind,id&select=kind,id,updated_at",{method:"POST",body:body,prefer:"resolution=merge-duplicates,return=representation"});
+      if(!r3.ok){fail++;failMsg=(await clErr(r3)).message;return}
+      (await r3.json()).forEach(function(x){var k=x.kind+":"+x.id,s=sh[k];if(!s)return;if(s.del)delete sh[k];else{s.t=x.updated_at;s.d=0;s.m=0}})}
+    for(var j=0;j<dirty.length;j++){
+      var k=dirty[j],p=k.indexOf(":"),row={kind:k.slice(0,p),id:k.slice(p+1),data:sh[k].del?null:now[k],deleted:!!sh[k].del};
+      if(!row.deleted&&!row.data)continue;
+      var js=JSON.stringify(row);if(parts.length&&(size+js.length>800000||parts.length>=20))await flush();
+      parts.push(js);size+=js.length}
+    await flush();
+    cl.st.cur=maxT;cl.last=Date.now();
+    if(fail)cl.err="有 "+fail+" 批没传上去："+failMsg;
+  }catch(e){cl.err=(e instanceof TypeError)?"连不上云端，请检查网络（本机的改动已记下，联网后会补传）":e.message}
+  localSet("cloudSt",cl.st);cl.busy=false;clShow();
+  if(cl.again){cl.again=false;clTouch()}}
+function clTouch(){if(!cl.ses)return;clearTimeout(cl.timer);cl.timer=setTimeout(clSync,2000)}
+function clTime(t){var d=new Date(t);return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
+function clShow(){
+  var b=$("cld");b.textContent=!cl.ses?"云同步":cl.busy?"☁ 同步中…":cl.err?"☁ 同步出错":cl.hold?"☁ 需要确认":cl.last?"☁ 已同步 "+clTime(cl.last):"☁ 云同步";
+  if(!$("cdg").open)return;
+  var on=!!cl.ses;$("clin").hidden=on;$("clon").hidden=!on;
+  if(on){
+    var n=Object.keys(cl.st.sh).filter(function(k){return cl.st.sh[k].t}).length;
+    $("clinfo").textContent="已登录："+cl.ses.email+"\n云端记录："+n+" 条"+(cl.last?"\n上次同步："+clTime(cl.last):"")+(cl.busy?"\n正在同步…":"");
+    $("clhold").hidden=!cl.hold;
+    if(cl.hold)$("clholdt").textContent="本机比云端少了 "+cl.hold.length+" 条记录。为了防止误删，这些删除还没有同步到云端。如果是你自己删的，点「确认从云端删除」；如果不是，点「从云端恢复」。"}
+  $("clmsg").textContent=cl.err||""}
+$("cld").onclick=function(){
+  $("clu").value=(cl.cfg&&cl.cfg.url)||CLOUD_URL;$("clk").value=(cl.cfg&&cl.cfg.key)||CLOUD_KEY;
+  $("clcfg").open=!$("clu").value||!$("clk").value;showDlg("cdg");clShow();
+  if(cl.ses){var mb=0;try{mb=(JSON.stringify(items).length+JSON.stringify(lib).length)/1e6}catch(e){}
+    $("clinfo").textContent+="\n数据大小：约 "+mb.toFixed(1)+" MB（Supabase 免费版数据库上限约 500 MB）"}};
+$("clx").onclick=function(){closeDlg("cdg")};
+$("cdg").addEventListener("click",function(e){if(e.target===this)closeDlg("cdg")});
+function clLogin(kind){return async function(){
+  var url=$("clu").value.trim().replace(/\/+$/,""),key=$("clk").value.trim(),em=$("cle").value.trim(),pw=$("clp").value;
+  if(!/^https:\/\/|^http:\/\/(localhost|127\.)/.test(url)||!key){$("clcfg").open=true;$("clmsg").textContent="请先填好 Project URL 和 anon key";return}
+  if(!em||pw.length<6){$("clmsg").textContent="请填邮箱和至少 6 位的密码";return}
+  cl.cfg={url:url,key:key};localSet("cloudCfg",cl.cfg);$("clmsg").textContent="请稍候…";
+  try{var ok=await clAuth(kind,em,pw);
+    if(!ok){$("clmsg").textContent="注册成功，但需要先去邮箱点确认链接，点完再回来按「登录」。";return}
+    $("clp").value="";cl.err="";clShow();toast("已登录，开始同步");clSync()}
+  catch(e){$("clmsg").textContent=(e instanceof TypeError)?"连不上 Supabase，请检查 Project URL 和网络":"失败："+e.message}}}
+$("clli").onclick=clLogin("password");$("clsu").onclick=clLogin("signup");
+$("clnow").onclick=function(){clSync()};
+$("clout").onclick=function(){cl.ses=null;localSet("cloudSes",null);cl.err="";cl.hold=null;clShow();toast("已退出登录，本机数据还在")};
+$("clhd").onclick=function(){cl.okDel=true;clSync()};
+$("clhr").onclick=function(){(cl.hold||[]).forEach(function(k){delete cl.st.sh[k]});cl.st.cur="";cl.hold=null;clSync()};
+function cloudInit(){
+  Promise.all([localGet("cloudCfg"),localGet("cloudSes"),localGet("cloudSt")]).then(function(a){
+    cl.cfg=a[0]||(CLOUD_URL&&CLOUD_KEY?{url:CLOUD_URL,key:CLOUD_KEY}:null);cl.ses=a[1]||null;if(a[2]&&a[2].sh)cl.st=a[2];
+    clShow();if(cl.ses)clSync()});
+  document.addEventListener("visibilitychange",function(){if(!document.hidden&&cl.ses)clTouch()});
+  setInterval(function(){if(cl.ses&&!document.hidden&&navigator.onLine!==false)clSync()},60000)}
+
+openDB().then(load).then(function(d){items=d;loadGenCfg();return kvGet("lib")}).then(function(l){if(l){lib=l;lib.prompts=lib.prompts||[];lib.chars=lib.chars||[];lib.marked=lib.marked||[];lib.vibes=lib.vibes||[];lib.negs=lib.negs||[]}setView("gallery");renderGenLib();cloudInit()});
 })();
 </script>
 </body>
