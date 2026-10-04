@@ -1225,7 +1225,7 @@ async function refGen(it,btn){
   render();openDetail(it.id);if(n)toast("已添加 "+n+" 张参考图")}
 
 /* ---- 云同步（Supabase）：按「每条记录」同步，后改的为准 ---- */
-var CLOUD_URL="",CLOUD_KEY="";
+var CLOUD_URL="https://yrhefhwmwirohbccoybm.supabase.co",CLOUD_KEY="sb_publishable_s_PM8ZRiFAY79t8VRX2o6g_ldWBVdus";
 var cl={cfg:null,ses:null,st:{who:"",cur:"",sh:{}},busy:false,again:false,timer:null,hold:null,okDel:false,last:0,err:""};
 function clWho(){return cl.cfg&&cl.ses?cl.cfg.url+"|"+cl.ses.email:""}
 function clAll(){
