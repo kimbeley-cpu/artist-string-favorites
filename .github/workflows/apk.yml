@@ -1,0 +1,30 @@
+name: Build Android APK
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/apk.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - name: Build
+        working-directory: android
+        run: gradle --no-daemon assembleRelease
+      - name: Rename
+        run: cp android/app/build/outputs/apk/release/app-release.apk artist-string-favorites.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: apk, path: artist-string-favorites.apk }
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: 安卓安装包 ${{ github.run_number }}
+          body: 下载下面的 artist-string-favorites.apk，在安卓手机上打开安装。
+          files: artist-string-favorites.apk

@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>画师串收藏夹</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#17162a">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <style>
 :root{color-scheme:light;--bg:#eeecf6;--card:#fff;--ink:#25223d;--mute:#6e6a8c;--line:#d9d5ea;--acc:#d6336c;--accink:#fff;--soft:#f6f4fc;box-sizing:border-box}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#17162a;--card:#222139;--ink:#ece9fb;--mute:#9a96bd;--line:#37355a;--acc:#ff6b9d;--accink:#2a0f1b;--soft:#1c1b30}}
@@ -1391,6 +1397,7 @@ function cloudInit(){
   document.addEventListener("visibilitychange",function(){if(!document.hidden&&cl.ses)clTouch()});
   setInterval(function(){if(cl.ses&&!document.hidden&&navigator.onLine!==false)clSync()},60000)}
 
+if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(function(){});
 openDB().then(load).then(function(d){items=d;loadGenCfg();return kvGet("lib")}).then(function(l){if(l){lib=l;lib.prompts=lib.prompts||[];lib.chars=lib.chars||[];lib.marked=lib.marked||[];lib.vibes=lib.vibes||[];lib.negs=lib.negs||[]}setView("gallery");renderGenLib();cloudInit()});
 })();
 </script>
